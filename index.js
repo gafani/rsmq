@@ -41,8 +41,10 @@ RedisSMQ = (function(superClass) {
     this.setQueueAttributes = bind(this.setQueueAttributes, this);
     this.sendMessage = bind(this.sendMessage, this);
     this._receiveMessage = bind(this._receiveMessage, this);
+    this._receiveBulkMessage = bind(this._receiveBulkMessage, this);
     this._popMessage = bind(this._popMessage, this);
     this.receiveMessage = bind(this.receiveMessage, this);
+    this.receiveBulkMessage = bind(this.receiveBulkMessage, this);
     this.popMessage = bind(this.popMessage, this);
     this.listQueues = bind(this.listQueues, this);
     this.getQueueAttributes = bind(this.getQueueAttributes, this);
@@ -307,10 +309,40 @@ RedisSMQ = (function(superClass) {
     })(this);
   };
 
+  RedisSMQ.prototype._handleReceivedBulkMessage = function(cb) {
+    return (function(_this) {
+      return function(err, resp) {
+        var oes = [];
+        var o;
+        var len = resp.length;
+        if (err) {
+          _this._handleError(cb, err);
+          return;
+        }
+        if (!len) {
+          cb(null, []);
+          return;
+        }
+        for (var i=0; i<len; i++) {
+          o = {
+            id: resp[i][0],
+            message: resp[i][1],
+            rc: resp[i][2],
+            fr: Number(resp[i][3]),
+            sent: parseInt(parseInt(resp[i][0].slice(0, 10), 36) / 1000)
+          };
+          oes.push(o);
+        }
+        cb(null, oes);
+      }
+    })(this);
+  };
+
   RedisSMQ.prototype.initScript = function(cb) {
-    var script_changeMessageVisibility, script_popMessage, script_receiveMessage;
+    var script_changeMessageVisibility, script_popMessage, script_receiveMessage, script_receiveBulkMessage;
     script_popMessage = 'local msg = redis.call("ZRANGEBYSCORE", KEYS[1], "-inf", KEYS[2], "LIMIT", "0", "1") if #msg == 0 then return {} end redis.call("HINCRBY", KEYS[1] .. ":Q", "totalrecv", 1) local mbody = redis.call("HGET", KEYS[1] .. ":Q", msg[1]) local rc = redis.call("HINCRBY", KEYS[1] .. ":Q", msg[1] .. ":rc", 1) local o = {msg[1], mbody, rc} if rc==1 then table.insert(o, KEYS[2]) else local fr = redis.call("HGET", KEYS[1] .. ":Q", msg[1] .. ":fr") table.insert(o, fr) end redis.call("ZREM", KEYS[1], msg[1]) redis.call("HDEL", KEYS[1] .. ":Q", msg[1], msg[1] .. ":rc", msg[1] .. ":fr") return o';
     script_receiveMessage = 'local msg = redis.call("ZRANGEBYSCORE", KEYS[1], "-inf", KEYS[2], "LIMIT", "0", "1") if #msg == 0 then return {} end redis.call("ZADD", KEYS[1], KEYS[3], msg[1]) redis.call("HINCRBY", KEYS[1] .. ":Q", "totalrecv", 1) local mbody = redis.call("HGET", KEYS[1] .. ":Q", msg[1]) local rc = redis.call("HINCRBY", KEYS[1] .. ":Q", msg[1] .. ":rc", 1) local o = {msg[1], mbody, rc} if rc==1 then redis.call("HSET", KEYS[1] .. ":Q", msg[1] .. ":fr", KEYS[2]) table.insert(o, KEYS[2]) else local fr = redis.call("HGET", KEYS[1] .. ":Q", msg[1] .. ":fr") table.insert(o, fr) end return o';
+    script_receiveBulkMessage = 'local msg = redis.call("ZRANGEBYSCORE", KEYS[1], "-inf", KEYS[2], "LIMIT", "0", KEYS[4]) if #msg == 0 then return {} end local oes = {} for i=1,#msg,1 do redis.call("ZADD", KEYS[1], KEYS[3], msg[i]) local mbody = redis.call("HGET", KEYS[1] .. ":Q", msg[i]) local rc = redis.call("HINCRBY", KEYS[1] .. ":Q", msg[i] .. ":rc", 1) local o = {msg[i], mbody, rc} if rc==1 then redis.call("HSET", KEYS[1] .. ":Q", msg[i] .. ":fr", KEYS[2]) table.insert(o, KEYS[2]) else local fr = redis.call("HGET", KEYS[1] .. ":Q", msg[i] .. ":fr") table.insert(o, fr) end oes[i] = o end redis.call("HINCRBY", KEYS[1] .. ":Q", "totalrecv", #msg) return oes';
     script_changeMessageVisibility = 'local msg = redis.call("ZSCORE", KEYS[1], KEYS[2]) if not msg then return 0 end redis.call("ZADD", KEYS[1], KEYS[3], KEYS[2]) return 1';
     this.redis.script("load", script_popMessage, (function(_this) {
       return function(err, resp) {
@@ -330,6 +362,16 @@ RedisSMQ = (function(superClass) {
         }
         _this.receiveMessage_sha1 = resp;
         _this.emit('scriptload:receiveMessage');
+      };
+    })(this));
+    this.redis.script("load", script_receiveBulkMessage, (function(_this) {
+      return function(err, resp) {
+        if (err) {
+          console.log(err);
+          return;
+        }
+        _this.receiveBulkMessage_sha1 = resp;
+        _this.emit('scriptload:receiveBulkMessage');
       };
     })(this));
     this.redis.script("load", script_changeMessageVisibility, (function(_this) {
@@ -399,12 +441,42 @@ RedisSMQ = (function(superClass) {
     })(this));
   };
 
+  RedisSMQ.prototype.receiveBulkMessage = function(options, cb) {
+    if (this._validate(options, ["qname"], cb) == false) {
+      return;
+    }
+    this._getQueue(options.qname, false, (function(_this) {
+      return function(err, q) {
+        var ref;
+        if (err) {
+          _this._handleError(cb, err);
+          return;
+        }
+        options.vt = (ref = options.vt) != null ? ref : q.vt;
+        if (_this._validate(options, ["vt"], cb) === false) {
+          return;
+        }
+        if (_this.receiveBulkMessage_sha1) {
+          _this._receiveBulkMessage(options, q, cb);
+          return;
+        }
+        _this.on('scriptload:receiveBulkMessage', function() {
+          _this._receiveBulkMessage(options, q, cb);
+        });
+      }
+    })(this));
+  };
+
   RedisSMQ.prototype._popMessage = function(options, q, cb) {
     this.redis.evalsha(this.popMessage_sha1, 2, "" + this.redisns + options.qname, q.ts, this._handleReceivedMessage(cb));
   };
 
   RedisSMQ.prototype._receiveMessage = function(options, q, cb) {
     this.redis.evalsha(this.receiveMessage_sha1, 3, "" + this.redisns + options.qname, q.ts, q.ts + options.vt * 1000, this._handleReceivedMessage(cb));
+  };
+
+  RedisSMQ.prototype._receiveBulkMessage = function(options, q, cb) {
+    this.redis.evalsha(this.receiveBulkMessage_sha1, 4, "" + this.redisns + options.qname, q.ts, q.ts + options.vt * 1000, options.revlength, this._handleReceivedBulkMessage(cb));
   };
 
   RedisSMQ.prototype.sendMessage = function(options, cb) {
@@ -578,6 +650,20 @@ RedisSMQ = (function(superClass) {
               return false;
             }
           }
+          break;
+        case "revlength":
+          o[item] = parseInt(o[item], 10);
+          if (_.isNaN(o[item]) || !_.isNumber(o[item]) || o[item] < 1 || o[item] > 65535) {
+            if (o[item] !== -1) {
+              this._handleError(cb, "invalidValue", {
+                item: item,
+                min: 1,
+                max: 65536
+              });
+              return false;
+            }
+          }
+          break;
       }
     }
     return o;
