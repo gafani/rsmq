@@ -1,5 +1,8 @@
 ![RSMQ: Redis Simple Message Queue for Node.js](https://img.webmart.de/rsmq_wide.png)
 
+> Note: This git forked from [smrchy/rsmq](https://github.com/smrchy/rsmq)
+> Just a function. That received bulk message.
+
 # Redis Simple Message Queue
 
 A lightweight message queue for Node.js that requires no dedicated queue server. Just a Redis server.
@@ -18,15 +21,15 @@ A lightweight message queue for Node.js that requires no dedicated queue server.
 * [Test coverage](http://travis-ci.org/smrchy/rsmq)
 * A message is deleted by the message id. The message id is returned by the `sendMessage` and `receiveMessage` method.
 * Messages stay in the queue unless deleted.
-* Optional RESTful interface via [rest-rsmq](https://github.com/smrchy/rest-rsmq)  
-  
-**Note:** RSMQ uses the Redis EVAL command (LUA scripts) so the minimum Redis version is 2.6+. 
+* Optional RESTful interface via [rest-rsmq](https://github.com/smrchy/rest-rsmq)
+
+**Note:** RSMQ uses the Redis EVAL command (LUA scripts) so the minimum Redis version is 2.6+.
 
 ## Usage
 
 * After creating a queue you can send messages to that queue.
 * The messages will be handled in a **FIFO** (first in first out) manner unless specified with a delay.
-* Every message has a unique `id` that you can use to delete the message. 
+* Every message has a unique `id` that you can use to delete the message.
 * The `sendMessage` method will return the `id` for a sent message.
 * The `receiveMessage` method will return an `id` along with the message and some stats.
 * Should you not delete the message it will be eligible to be received again after the visibility timeout is reached.
@@ -67,7 +70,7 @@ Parameters for RedisSMQ via an *options* object:
 
 * `host` (String): *optional (Default: "127.0.0.1")* The Redis server
 * `port` (Number): *optional (Default: 6379)* The Redis port
-* `options` (Object): *optional (Default: {})* The Redis [https://github.com/NodeRedis/node_redis#options-object-properties](https://github.com/NodeRedis/node_redis#options-object-properties) `options` object. 
+* `options` (Object): *optional (Default: {})* The Redis [https://github.com/NodeRedis/node_redis#options-object-properties](https://github.com/NodeRedis/node_redis#options-object-properties) `options` object.
 * `client` (RedisClient): *optional* A existing redis client instance. `host` and `server` will be ignored.
 * `ns` (String): *optional (Default: "rsmq")* The namespace prefix used for all keys created by RSMQ
 
@@ -104,7 +107,7 @@ rsmq.sendMessage({qname:"myqueue", message:"Hello World"}, function (err, resp) 
 ```javascript
 rsmq.receiveMessage({qname:"myqueue"}, function (err, resp) {
 	if (resp.id) {
-		console.log("Message received.", resp)	
+		console.log("Message received.", resp)
 	}
 	else {
 		console.log("No messages for me...")
@@ -112,13 +115,32 @@ rsmq.receiveMessage({qname:"myqueue"}, function (err, resp) {
 });
 ```
 
+
+### Receive bulk message
+
+
+```javascript
+rsmq.receiveBulkMessage({qname:"myqueue", recvlength: 10000}, function (err, resp) {
+    if (resp.length > 0) {
+        if (resp[0].id) {
+            console.log("Message received.", resp[0])
+        }
+        else {
+            console.log("No messages for me...")
+        }
+    }
+});
+```
+
+
+
 ### Delete a message
 
 
 ```javascript
 rsmq.deleteMessage({qname:"myqueue", id:"dhoiwpiirm15ce77305a5c3a3b0f230c6e20f09b55"}, function (err, resp) {
 	if (resp===1) {
-		console.log("Message deleted.")	
+		console.log("Message deleted.")
 	}
 	else {
 		console.log("Message not found.")
@@ -139,7 +161,7 @@ rsmq.listQueues( function (err, queues) {
 });
 ```
 
-  
+
 ## Methods
 
 
@@ -154,7 +176,7 @@ Parameters:
 * `id` (String): The message id.
 * `vt` (Number): The length of time, in seconds, that this message will not be visible. Allowed values: 0-9999999 (around 115 days)
 
-Returns: 
+Returns:
 
 * `1` if successful, `0` if the message was not found.
 
@@ -254,7 +276,7 @@ Returns an object:
   * `fr`: Timestamp of when this message was first received.
   * `rc`: Number of times this message was received.
 
-Note: Will return an empty object if no message is there  
+Note: Will return an empty object if no message is there
 
 
 
@@ -275,7 +297,29 @@ Returns an object:
   * `fr`: Timestamp of when this message was first received.
   * `rc`: Number of times this message was received.
 
-Note: Will return an empty object if no message is there  
+Note: Will return an empty object if no message is there
+
+
+
+### receiveBulkMessage
+
+Receive the next bulk message from the queue.
+
+Parameters:
+
+* `qname` (String): The Queue name.
+* `recvlength` (Number): The Length bulk message
+* `vt` (Number): *optional* *(Default: queue settings)* The length of time, in seconds, that the received message will be invisible to others. Allowed values: 0-9999999 (around 115 days)
+
+Returns an object in Array:
+
+  * `message`: The message's contents.
+  * `id`: The internal message id.
+  * `sent`: Timestamp of when this message was sent / created.
+  * `fr`: Timestamp of when this message was first received.
+  * `rc`: Number of times this message was received.
+
+Note: Will return an empty `Array` if no message is there
 
 
 
@@ -294,7 +338,7 @@ Returns:
 * `id`: The internal message id.
 
 
-    
+
 ### setQueueAttributes
 
 Sets queue parameters.
@@ -320,7 +364,7 @@ Returns an object:
 * `msgs`: Current number of messages in the queue
 * `hiddenmsgs`: Current number of hidden / not visible messages. A message can be hidden while "in flight" due to a `vt` parameter or when sent with a `delay`
 
-    
+
 ### quit
 
 Disconnect the redis client.
