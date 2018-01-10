@@ -120,7 +120,7 @@ rsmq.receiveMessage({qname:"myqueue"}, function (err, resp) {
 
 
 ```javascript
-rsmq.receiveBulkMessage({qname:"myqueue", recvlength: 10000}, function (err, resp) {
+rsmq.receiveBulkMessage({qname:"myqueue", revlength: 10000}, function (err, resp) {
     if (resp.length > 0) {
         if (resp[0].id) {
             console.log("Message received.", resp[0])
@@ -308,7 +308,7 @@ Receive the next bulk message from the queue.
 Parameters:
 
 * `qname` (String): The Queue name.
-* `recvlength` (Number): The Length bulk message
+* `revlength` (Number): The Length bulk message
 * `vt` (Number): *optional* *(Default: queue settings)* The length of time, in seconds, that the received message will be invisible to others. Allowed values: 0-9999999 (around 115 days)
 
 Returns an object in Array:
