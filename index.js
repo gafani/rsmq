@@ -50,6 +50,7 @@ RedisSMQ = (function(superClass) {
     this.getQueueAttributes = bind(this.getQueueAttributes, this);
     this.deleteQueue = bind(this.deleteQueue, this);
     this.deleteMessage = bind(this.deleteMessage, this);
+    this.deleteBulkMessage = bind(this.deleteBulkMessage, this);
     this.createQueue = bind(this.createQueue, this);
     this._changeMessageVisibility = bind(this._changeMessageVisibility, this);
     this.changeMessageVisibility = bind(this.changeMessageVisibility, this);
@@ -207,6 +208,42 @@ RedisSMQ = (function(superClass) {
     }
     key = "" + this.redisns + options.qname;
     mc = [["zrem", key, options.id], ["hdel", key + ":Q", "" + options.id, options.id + ":rc", options.id + ":fr"]];
+    this.redis.multi(mc).exec((function(_this) {
+      return function(err, resp) {
+        if (err) {
+          _this._handleError(cb, err);
+          return;
+        }
+        if (resp[0] === 1 && resp[1] > 0) {
+          cb(null, 1);
+        } else {
+          cb(null, 0);
+        }
+      };
+    })(this));
+  };
+
+  RedisSMQ.prototype.deleteBulkMessage = function(options, cb) {
+    function _generateZrem(key, mid) {
+      return ["zrem", key, mid];
+    }
+
+    function _generateHdel(key, mid) {
+      return ["hdel", key + ":Q", "" + mid, mid + ":rc", mid + ":fr"];
+    }
+
+    var key, mc;
+    if (this._validate(options, ["qname", "id"], cb) === false) {
+      return;
+    }
+    key = "" + this.redisns + options.qname;
+    mc = [];
+    var idLength = options.id.length;
+    for (var i=0; i<idLength; i++) {
+      mc.push(_generateZrem(key, options.id[i]));
+      mc.push(_generateHdel(key, options.id[i]));
+    }
+
     this.redis.multi(mc).exec((function(_this) {
       return function(err, resp) {
         if (err) {
@@ -618,12 +655,17 @@ RedisSMQ = (function(superClass) {
             });
             return false;
           }
-          o[item] = o[item].toString();
-          if (!this._VALID[item].test(o[item])) {
-            this._handleError(cb, "invalidFormat", {
-              item: item
-            });
-            return false;
+
+          if (!Array.isArray(o[item])) {
+            o[item] = o[item].toString();
+            if (!this._VALID[item].test(o[item])) {
+              this._handleError(cb, "invalidFormat", {
+                item: item
+              });
+              return false;
+            }
+          } else {
+            // pass...
           }
           break;
         case "vt":
