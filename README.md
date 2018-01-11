@@ -1,7 +1,7 @@
 ![RSMQ: Redis Simple Message Queue for Node.js](https://img.webmart.de/rsmq_wide.png)
 
 > Note: This git forked from [smrchy/rsmq](https://github.com/smrchy/rsmq)
-> Just a function. That received bulk message.
+> Just a function. That received, delete bulk message.
 
 # Redis Simple Message Queue
 
@@ -148,6 +148,23 @@ rsmq.deleteMessage({qname:"myqueue", id:"dhoiwpiirm15ce77305a5c3a3b0f230c6e20f09
 });
 ```
 
+
+
+### Delete bulk message
+
+
+```javascript
+rsmq.deleteBulkMessage({qname:"myqueue", id:["dhoiwpiirm15ce77305a5c3a3b0f230c6e20f09b55", "xhoiwpiirm15ce77305a5c3a3b0f230c6e20f09b56"]}, function (err, resp) {
+    if (resp===1) {
+        console.log("Message deleted.")
+    }
+    else {
+        console.log("Message not found.")
+    }
+});
+```
+
+
 ### List queues
 
 
@@ -210,6 +227,18 @@ Returns:
 
 * `1` if successful, `0` if the message was not found.
 
+
+
+### deleteBulkMessage
+
+Parameters:
+
+ * `qname` (String): The Queue name.
+ * `id` (String): message id Array to delete.
+
+Returns:
+
+ * `1` if successful, `0` if the message was not found.
 
 
 ### deleteQueue
